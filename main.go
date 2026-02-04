@@ -4,9 +4,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/p9works/p9/internal/remote"
+	"github.com/p9works/p9/internal/ports"
 	"net"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -23,20 +24,21 @@ func main() {
 
 	// For now, just print which operation was requested
 	remoteFlag := flag.String("r", "", "Check remote port (host:port)")
+	timeoutFlag := flag.Duration("t", 3*time.Second, "Override default timeout (e.g. -t 5s, -t 60s)")
 	//localFlag := flag.Bool("l", false, "List local open ports")
 	//domainFlag := flag.String("d", "", "Domain/IP lookup")
 	flag.Parse()
 
 	switch {
 	case *remoteFlag != "":
-		handleRemote(*remoteFlag)
+		handleRemote(*remoteFlag, *timeoutFlag)
 	default:
 		printUsage()
 	}
 }
 
-func handleRemote(address string) {
-	isOpen, err := remote.CheckPortTCP(address)
+func handleRemote(address string, timeout time.Duration) {
+	isOpen, err := ports.CheckPortTCP(address, timeout)
 	if err != nil {
 		var opErr *net.OpError
 		if errors.As(err, &opErr) {
