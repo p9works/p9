@@ -1,9 +1,12 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/p9works/p9/internal/remote"
+	"net"
+	"syscall"
 )
 
 func main() {
@@ -30,31 +33,38 @@ func main() {
 	default:
 		printUsage()
 	}
-
-	//if *remoteFlag != "" {
-	//	isOpen, err := remote.CheckPortTCP(*remoteFlag)
-	//	if err != nil {
-	//		fmt.Printf("Cannot connect to %s, %v\n", *remoteFlag, err)
-	//		return
-	//	}
-	//	if isOpen {
-	//		fmt.Printf("✓ Port %s is OPEN\n", *remoteFlag)
-	//	} else {
-	//		fmt.Printf("✗ Port %s is CLOSED\n", *remoteFlag)
-	//	}
-	//}
 }
 
 func handleRemote(address string) {
 	isOpen, err := remote.CheckPortTCP(address)
 	if err != nil {
-		fmt.Printf("Cannot connect to %s, %v\n", address, err)
+		var opErr *net.OpError
+		if errors.As(err, &opErr) {
+			var netErr net.Error
+			if errors.As(opErr.Err, &netErr) && netErr.Timeout() {
+				fmt.Printf("⏱️  \033[33mConnection to %s TIMED OUT\033[0m\n", address)
+				return
+			}
+			if errors.Is(opErr.Err, syscall.ECONNREFUSED) {
+				fmt.Printf("🔴 \033[31mPort %s is CLOSED (connection refused)\033[0m\n", address)
+				return
+			}
+			var dnsErr *net.DNSError
+			if errors.As(opErr.Err, &dnsErr) {
+				fmt.Printf("🔍 \033[33mDNS lookup failed: %v\033[0m\n", dnsErr)
+				return
+			}
+		}
+		var addrErr *net.AddrError
+		if errors.As(err, &addrErr) {
+			fmt.Printf("⚠️  \033[33mInvalid address format: %v\033[0m\n", addrErr)
+			return
+		}
+		fmt.Printf("❌ \033[31mCannot connect to %s: %v\033[0m\n", address, err)
 		return
 	}
 	if isOpen {
-		fmt.Printf("✓ Port %s is OPEN\n", address)
-	} else {
-		fmt.Printf("✗ Port %s is CLOSED\n", address)
+		fmt.Printf("✅ \033[32mPort %s is OPEN\033[0m\n", address)
 	}
 }
 
