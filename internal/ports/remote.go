@@ -1,16 +1,56 @@
 package ports
 
 import (
+	"errors"
 	"net"
+	"syscall"
 	"time"
 )
 
-func CheckPortTCP(address string, timeout time.Duration) (bool, error) {
-	result, err := net.DialTimeout("tcp", address, timeout)
+type PortCheckResult struct {
+	Address   string
+	IsOpen    bool
+	Error     error
+	ErrorType string // "timeout", "refused", "dns", "invalid_address", "other"
+}
+
+func CheckPortTCP(address string, timeout time.Duration) PortCheckResult {
+
+	result := PortCheckResult{
+		Address: address,
+	}
+
+	conn, err := net.DialTimeout("tcp", address, timeout)
 
 	if err != nil {
-		return false, err
+		result.Error = err
+		result.ErrorType = categorizeError(err)
+		return result
 	}
-	defer result.Close()
-	return true, nil
+	defer conn.Close()
+
+	result.IsOpen = true
+	return result
+}
+
+func categorizeError(err error) string {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		var netErr net.Error
+		if errors.As(opErr.Err, &netErr) && netErr.Timeout() {
+			return "timeout"
+		}
+		if errors.Is(opErr.Err, syscall.ECONNREFUSED) {
+			return "refused"
+		}
+		var dnsErr *net.DNSError
+		if errors.As(opErr.Err, &dnsErr) {
+			return "dns"
+		}
+	}
+	var addrErr *net.AddrError
+	if errors.As(err, &addrErr) {
+		return "invalid_address"
+	}
+	return "other"
 }
